@@ -484,3 +484,24 @@ def ClearOrder(request):
         return redirect(request.META.get("HTTP_REFERER"))
 
     return render(request, "store/order_summary.html")
+
+from django.http import JsonResponse
+from django.views.decorators.http import require_GET
+from django.db import connection
+
+@require_GET
+def health_check(request):
+    try:
+        # Perform a basic database connection check
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        
+        return JsonResponse({
+            "status": "healthy",
+            "database": "connected"
+        }, status=200)
+    except Exception as e:
+        return JsonResponse({
+            "status": "unhealthy",
+            "error": str(e)
+        }, status=500)

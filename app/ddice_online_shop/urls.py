@@ -24,7 +24,7 @@ from main.formview.cloth_formview import ClothFormView
 from main.views import CheckoutView
 from django.conf import settings
 from django.conf.urls.static import static
-
+from main.views import health_check  # or wherever you define the view
 urlpatterns = [
 	path('admin/', admin.site.urls),
 	path("", views.home, name = "home"),
@@ -55,5 +55,6 @@ urlpatterns = [
 
 	path("loginguest/", views.LoginGuestView, name='login_guest'),
 	path("convert/", include("guest_user.urls")),
+    path('health/', health_check, name='health_check'),
 	
 ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

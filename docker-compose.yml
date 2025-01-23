@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: django_online_store_db
+    volumes:
+      - mysql_data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: ddice_db
+      MYSQL_USER: django
+      MYSQL_PASSWORD: django_password
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - django_network
+
+  web:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: django_online_store_web
+    volumes:
+      - ./app:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DJANGO_SECRET_KEY=your-secret-key-here
+      - DEBUG=True
+      - MYSQL_DATABASE=ddice_db
+      - MYSQL_USER=django
+      - MYSQL_PASSWORD=django_password
+      - MYSQL_HOST=db
+      - MYSQL_PORT=3306
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - django_network
+    command: >
+      sh -c "echo 'Waiting for MySQL...' &&
+             while ! nc -z db 3306; do 
+               sleep 1; 
+             done &&
+             echo 'MySQL is up - running migrations...' &&
+             python manage.py migrate &&
+             python manage.py loaddata dumped_data.json &&
+             python manage.py runserver 0.0.0.0:8000"
+
+networks:
+  django_network:
+    driver: bridge
+
+volumes:
+  mysql_data:

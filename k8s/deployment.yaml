@@ -1,0 +1,228 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: django-online-store
+  labels:
+    app: django-online-store
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: django-online-store
+  template:
+    metadata:
+      labels:
+        app: django-online-store
+    spec:
+      initContainers:
+        - name: db-prepare
+          image: kennyrimba/django-online-store:latest  # Use the same image as your main container
+          command: 
+          - sh
+          - -c
+          - |
+            python manage.py migrate --fake-initial
+            python manage.py migrate
+          env:
+          # Duplicate the environment variables from the main container
+          - name: DJANGO_SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: django-secrets
+                key: secret-key
+          - name: DEBUG
+            value: "False"
+          - name: MYSQL_HOST
+            value: mysql-service
+          - name: MYSQL_DATABASE
+            value: ddice_db
+          - name: MYSQL_USER
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secrets
+                key: username
+          - name: MYSQL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-secrets
+                key: password
+      containers:
+      - name: django-web
+        image: kennyrimba/django-online-store:latest  # Replace with your actual image
+        command: 
+        - sh
+        - -c
+        - |
+          python manage.py loaddata dumped_data.json || true
+          python manage.py runserver 0.0.0.0:8000
+        ports:
+        - containerPort: 8000
+        env:
+        - name: DJANGO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: django-secrets
+              key: secret-key
+        - name: DEBUG
+          value: "False"
+        - name: MYSQL_HOST
+          value: mysql-service
+        - name: MYSQL_DATABASE
+          value: ddice_db
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: username
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: password
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        readinessProbe:
+          httpGet:
+            path: /health/  # Adjust to your actual health check endpoint
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 5
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health/
+            port: 8000
+          initialDelaySeconds: 90  # Increased from 60
+          periodSeconds: 15
+          failureThreshold: 3
+          timeoutSeconds: 5
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: django-service
+spec:
+  selector:
+    app: django-online-store
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: LoadBalancer
+
+---
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: django-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: django-online-store
+  minReplicas: 1
+  maxReplicas: 10
+  behavior:
+    scaleUp:
+      policies:
+      - type: Pods
+        value: 2  # Scale up by 2 pods
+        periodSeconds: 60  # Wait 60 seconds between scaling actions
+      selectPolicy: Max  # Use the policy that allows the most pods to be added
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 10
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        env:
+        - name: MYSQL_RANDOM_ROOT_PASSWORD
+          value: "yes"
+        - name: MYSQL_DATABASE
+          value: ddice_db
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: username
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: password
+        ports:
+        - containerPort: 3306
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: django-secrets
+type: Opaque
+stringData:
+  secret-key: your-django-secret-key  # Replace with a strong secret key
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secrets
+type: Opaque
+stringData:
+  username: django
+  password: django_password  # Use a strong, randomly generated password
