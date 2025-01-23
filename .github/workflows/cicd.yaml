@@ -93,11 +93,3 @@ jobs:
         kubectl rollout restart deployment frontend-backend
         kubectl rollout restart deployment mysql
       shell: powershell
-
-    - name: Clean up
-      if: always()
-      shell: pwsh
-      run: |
-        if (Test-Path kubeconfig.yaml) {
-          Remove-Item kubeconfig.yaml -Force
-        }
